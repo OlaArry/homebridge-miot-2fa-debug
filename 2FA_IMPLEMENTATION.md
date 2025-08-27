@@ -34,22 +34,31 @@ When a user tries to discover devices using their Mi Cloud credentials and 2FA i
 1. **`lib/protocol/MiCloud.js`**
    - Added `loginWith2FA(authenticatedUrl)` method
    - Added `_extractAuthParamsFromUrl()` and `_extractStsParams()` for URL parsing
-   - Added `_loginStep3WithAuthParams()` for 2FA-specific login step 3
+   - Added `_followStsUrlForToken()` for robust serviceToken extraction (replaces `_loginStep3WithAuthParams()`)
    - Enhanced debug logging in `_loginStep2()` 
+   - Improved cookie management with additional timezone and locale cookies
+   - Added fallback serviceToken generation for edge cases
 
 2. **`homebridge-ui/server.js`**
    - Added `/authenticate-2fa` endpoint
    - Added `authenticate2FA()` method to handle 2FA authentication requests
 
 3. **`homebridge-ui/public/index.html`**
-   - Added 2FA input form with instructions
+   - Added 2FA input form with detailed instructions
    - Added JavaScript handler for 2FA authentication
-   - Enhanced user interface with better instructions and error messages
+   - Enhanced user interface with better instructions and comprehensive error messages
 
 ### Key Methods
 
 #### `MiCloud.loginWith2FA(authenticatedUrl)`
-Main method for authenticating with a 2FA URL. Extracts authentication parameters and completes the login process.
+Main method for authenticating with a 2FA URL. Extracts authentication parameters and completes the login process using the new robust STS URL handling.
+
+#### `MiCloud._followStsUrlForToken(stsUrl)`
+Robustly follows the STS URL to extract serviceToken from:
+- Set-Cookie headers
+- Response body JavaScript redirects  
+- URL parameters
+- Fallback generation from auth parameters
 
 #### `MiCloud._extractAuthParamsFromUrl(authenticatedUrl)`
 Determines if the URL is a valid STS URL and extracts authentication parameters.
@@ -57,12 +66,9 @@ Determines if the URL is a valid STS URL and extracts authentication parameters.
 #### `MiCloud._extractStsParams(stsUrl)`
 Parses the STS URL query parameters and extracts:
 - `auth`: Authentication token
-- `_ssign`: Security signature
+- `_ssign`: Security signature (converted to hex format for ssecurity)
 - `d`: Device/User identifier
 - `ticket`: Ticket number
-
-#### `MiCloud._loginStep3WithAuthParams(authParams)`
-Completes the authentication process using extracted parameters from the 2FA URL.
 
 ## URL Format
 
