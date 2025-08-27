@@ -49,6 +49,23 @@
           <div class="text-center two-factor-url miot-message" style="display: none">
             <a id="twoFactorAuth" class="btn btn-danger" href="#" target="_blank" style="color:#fff;">2FA required, click here, wait a few seconds and try again!</a>
           </div>
+          <div class="text-center two-factor-input miot-message" style="display: none">
+            <div class="alert alert-info mt-3" role="alert">
+              <h6><strong>2FA Authentication Required</strong></h6>
+              <p>After clicking the 2FA link above and completing authentication:</p>
+              <ol class="text-left">
+                <li>Complete the 2FA verification in the opened browser tab</li>
+                <li>Copy the final URL from the browser address bar (it should start with https://sts.api.io.mi.com/sts)</li>
+                <li>Paste it in the field below and click "Authenticate with 2FA URL"</li>
+              </ol>
+            </div>
+            <div class="form-group mt-3">
+              <label for="authenticatedUrl">Enter the authenticated URL:</label>
+              <input class="form-control" id="authenticatedUrl" type="text" placeholder="https://sts.api.io.mi.com/sts?...">
+              <small class="form-text text-muted">After completing 2FA, paste the URL from the browser address bar here</small>
+            </div>
+            <button class="btn btn-success" id="authenticate2FA" type="button">Authenticate with 2FA URL</button>
+          </div>
           <div class="text-center device-table miot-message" style="display: none">
             <table class="table table-sm">
               <thead>
@@ -394,6 +411,7 @@
             homebridge.toast.error(data.error, 'Login Error');
             $('.two-factor-url a').attr('href', data.url);
             $('.two-factor-url').show();
+            $('.two-factor-input').show();
           } else if ((typeof data.success === 'undefined' || data.success === false) && data.error) {
             homebridge.toast.error(data.error, 'Login Error');
           } else {
@@ -412,6 +430,75 @@
         })
       } else {
         homebridge.toast.error('A username and password must be provided.', 'Error');
+      }
+    });
+
+    // 2FA authentication
+    $('#authenticate2FA').on('click', function(e) {
+      e.preventDefault();
+      var btn = $(this),
+        authenticatedUrlInput = $('#authenticatedUrl'),
+        autoAddToHomebridgeCheckbox = $('#autoAddToHomebridgeCheckbox'),
+        showAllDevicesCheckbox = $('#showAllDevicesCheckbox');
+
+      let authenticatedUrl = authenticatedUrlInput.val();
+      let isAutoAddToHomebridge = autoAddToHomebridgeCheckbox.is(":checked");
+      let isShowAll = showAllDevicesCheckbox.is(":checked");
+
+      if (authenticatedUrl && authenticatedUrl.includes('sts.api.io.mi.com')) {
+        $('.miot-message').hide();
+        btn.prop('disabled', true).html('<div class="spinner-border" role="status"><span class="sr-only">Authenticating...</span></div>');
+        authenticatedUrlInput.prop('disabled', true);
+        autoAddToHomebridgeCheckbox.prop('disabled', true);
+        showAllDevicesCheckbox.prop('disabled', true);
+
+        homebridge.request('/authenticate-2fa', {
+          authenticatedUrl,
+          isShowAll
+        }).then(async data => {
+          if (data.success && data.devices && data.devices.length > 0) {
+            // create the device table
+            showDeviceTable(data.devices);
+            // add devices to homebridge
+            if (isAutoAddToHomebridge) {
+              // only add device which have ip and deviceid does not start with 'blt.', prevent of automatically adding bluetooth device if show all enabled
+              let filteredDevices = data.devices.filter(device => device.ip && device.ip.length > 0 && !device.deviceId.includes("blt."));
+              // add new devices to exists devices list, prevent duplicate by device ip
+              filteredDevices = filteredDevices.filter(device => !configuration.devices.find(d => d.ip === device.ip));
+              configuration.devices.push(...filteredDevices);
+              await homebridge.updatePluginConfig([configuration]);
+              createForm(configSchema, configuration);
+              homebridge.toast.success('Added ' + filteredDevices.length + ' new devices. Save and restart Homebridge to apply changes.');
+            }
+            homebridge.toast.success('2FA Authentication successful!');
+            // Hide 2FA input elements as they are no longer needed
+            $('.two-factor-url').hide();
+            $('.two-factor-input').hide();
+          } else if (data.success && (!data.devices || data.devices.length === 0)) {
+            homebridge.toast.warning('No devices found on your account.');
+          } else if ((typeof data.success === 'undefined' || data.success === false) && data.error) {
+            homebridge.toast.error(data.error, '2FA Authentication Error');
+          } else {
+            homebridge.toast.error('Could not authenticate with 2FA due to an unknown error.', 'Unknown Error');
+          }
+
+          if (data.warning) {
+            homebridge.toast.warning(data.warning);
+          }
+
+          btn.prop('disabled', false).html("Authenticate with 2FA URL");
+          authenticatedUrlInput.prop('disabled', false);
+          autoAddToHomebridgeCheckbox.prop('disabled', false);
+          showAllDevicesCheckbox.prop('disabled', false);
+        })
+      } else {
+        if (!authenticatedUrl) {
+          homebridge.toast.error('Please provide the authenticated URL from your browser address bar.', 'Error');
+        } else if (!authenticatedUrl.includes('sts.api.io.mi.com')) {
+          homebridge.toast.error('Please provide the final authenticated URL that starts with https://sts.api.io.mi.com/sts', 'Error');
+        } else {
+          homebridge.toast.error('Please provide a valid authenticated URL starting with https://sts.api.io.mi.com/sts', 'Error');
+        }
       }
     });
 

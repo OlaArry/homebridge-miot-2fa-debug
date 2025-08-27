@@ -13,6 +13,7 @@ class UiServer extends HomebridgePluginUiServer {
     super();
 
     this.onRequest('/get-all-devices', this.getAllDevices.bind(this));
+    this.onRequest('/authenticate-2fa', this.authenticate2FA.bind(this));
     this.onRequest('/generate-device-class', this.generateDeviceClass.bind(this));
     this.onRequest('/get-device-metadata', this.getDeviceMetadata.bind(this));
 
@@ -40,6 +41,58 @@ class UiServer extends HomebridgePluginUiServer {
       return {
         success: false,
         error: err.message + `! The specified MiCloud login credentials might be incorrect or the account does not exist...`
+      };
+    }
+
+    let warningMsg = null;
+    const isShowAll = !!params.isShowAll;
+
+    // list all device from all available countries
+    for (const country of miCloud.availableCountries) {
+      try {
+        miCloud.setCountry(country);
+        // prevent duplicate devices
+        const allList = (await miCloud.getDevices()).filter(device => !devices.find(d => d.did === device.did));
+        let validList = allList;
+        if (!isShowAll) {
+          // filter out device without an local ip and without ssid (most probably bluetooth devices)
+          validList = allList.filter(device => device.localip && device.localip.length > 0 && device.ssid && device.ssid.length > 0);
+        }
+        validList.map(device => device.country = country);
+        devices.push(...validList);
+      } catch (err) {
+        warningMsg = `Warning - Could not retrive device list from ${country} server. Message:  ${err.message}`
+      }
+    }
+
+    return {
+      success: true,
+      warning: warningMsg,
+      devices: devices.map(device => {
+        return {
+          name: device.name,
+          ip: device.localip,
+          token: device.token,
+          model: device.model,
+          deviceId: device.did,
+          country: device.country
+        }
+      })
+    }
+  }
+
+  async authenticate2FA(params) {
+    const miCloud = new MiCloud(new Logger());
+    miCloud.setRequestTimeout(10000); // timeout 10 seconds
+    var devices = [];
+
+    // try to login with 2FA
+    try {
+      await miCloud.loginWith2FA(params.authenticatedUrl);
+    } catch (err) {
+      return {
+        success: false,
+        error: err.message + `! The provided authenticated URL might be incorrect or expired...`
       };
     }
 
